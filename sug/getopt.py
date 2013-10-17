@@ -9,7 +9,8 @@ class UnexpectedArguments(Exception):
     pass
 
 class Getopt:
-    """Getopt -- Unix style minimalistic option parser.
+    """
+    Getopt -- Unix style minimalistic option parser.
 
     Getopt is an argument parser, inspired by it's namesake, POSIX getopt(3).
     Here is an example of it's usage:
@@ -30,7 +31,8 @@ class Getopt:
     interpreted as non-options.
     """
     def __init__(self, program_name, *args, **options):
-        """Initialise Getopt.
+        """
+	Initialise Getopt.
 
         args: A list of arguments.
 
@@ -47,9 +49,9 @@ class Getopt:
         self.__END_OF_FLAGS_MARKER = "--"
         self.__FLAG_ARG_SEPERATOR  = ","
 
-        self.options = {} # flag: value
-        self.non_options = []
-        
+        self._options = {} # flag: value
+        self._non_options = []
+
     def parse(self):
         flags = self.__options.keys()
         switches = {switch for switch, settings in self.__options.items()
@@ -61,10 +63,10 @@ class Getopt:
         for i in range(len(self.__argv)):
             arg = self.__argv[i]
             if not arg.startswith("-"):
-                self.non_options = self.__argv[i:]
+                self._non_options = self.__argv[i:]
                 break
             elif arg == self.__END_OF_FLAGS_MARKER:
-                self.non_options = self.__argv[i + 1 :]
+                self._non_options = self.__argv[i + 1 :]
                 break
             else:
                 # Get rid of initial `-'.
@@ -84,18 +86,26 @@ class Getopt:
                 else:
                     raise UnknownFlag("Flag `{0}' is not recognised.".format(flag))
         unset_switches = switches - set_switches
-        self.options = options
+        self._options = options
         for switch in unset_switches:
-            self.options[switch] = False
+            self._options[switch] = False
         for switch in set_switches:
-            self.options[switch] = True
+            self._options[switch] = True
         return True
 
+    def options(self):
+        return self._options
+
+    def non_options(self):
+        return self._non_options
+
+
 # What is more important than thoroughly tested code? TDD anyone?
-# x = Getopt("poppy", "-ahi,ho", "-qw", "ello", "-e",
-#            a = (True, "asdf"),
-#            q = (False, "asdf"),
-#            w = (False, "asdf"))
-# x.parse()
-# print(x.options)
-# print(x.non_options)
+# if __name__ == "__main__":
+#     x = Getopt("poppy", "-ahi,ho", "-qw", "ello", "-e",
+#                a = (True, "asdf"),
+#                q = (False, "asdf"),
+#                w = (False, "asdf"))
+#     x.parse()
+#     print(x.options())
+#     print(x.non_options())
