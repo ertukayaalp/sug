@@ -50,7 +50,7 @@ class Getopt:
         self.__FLAG_ARG_SEPERATOR  = ","
 
         self._options = {} # flag: value
-        self._non_options = []
+        self._non_options = ()
 
     def parse(self):
         flags = self.__options.keys()
@@ -63,10 +63,10 @@ class Getopt:
         for i in range(len(self.__argv)):
             arg = self.__argv[i]
             if not arg.startswith("-"):
-                self._non_options = self.__argv[i:]
+                self._non_options = tuple(self.__argv[i:])
                 break
             elif arg == self.__END_OF_FLAGS_MARKER:
-                self._non_options = self.__argv[i + 1 :]
+                self._non_options = tuple(self.__argv[i + 1 :])
                 break
             else:
                 # Get rid of initial `-'.
