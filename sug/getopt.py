@@ -1,11 +1,11 @@
+"Option parser module for sug."
+
 class FlagNeedsArguments(Exception):
     "Raised when arguments to a flag are missing."
     pass
 
 class UnknownFlag(Exception):
-    pass
-
-class UnexpectedArguments(Exception):
+    "Raised when an unrecognised flag is passed via command line."
     pass
 
 class Getopt:
@@ -45,6 +45,7 @@ class Getopt:
         self.__program_name = program_name
         self.__options = options
         self.__argv    = args
+        self.__parsed = False
 
         self.__END_OF_FLAGS_MARKER = "--"
         self.__FLAG_ARG_SEPERATOR  = ","
@@ -53,7 +54,7 @@ class Getopt:
         self._non_options = ()
 
     def parse(self):
-        flags = self.__options.keys()
+        "Actually parse arguments."
         switches = {switch for switch, settings in self.__options.items()
                     if not settings[0]}
         flags_w_args = {switch for switch, settings in self.__options.items()
@@ -62,9 +63,11 @@ class Getopt:
         options      = dict()
         for i in range(len(self.__argv)):
             arg = self.__argv[i]
+            # The first non-option terminates argument parsing...
             if not arg.startswith("-"):
                 self._non_options = tuple(self.__argv[i:])
                 break
+            # ...and so does the end-of-flags marker.
             elif arg == self.__END_OF_FLAGS_MARKER:
                 self._non_options = tuple(self.__argv[i + 1 :])
                 break
@@ -72,40 +75,56 @@ class Getopt:
                 # Get rid of initial `-'.
                 arg  = arg[1:]
                 flag = arg[0]
+                # If the flag is in switches, start pushing it and the rest of
+                # it to set_switches.
                 if flag in switches:
-                    for i in arg:
-                        if i in switches:
-                            set_switches.add(i)
-                elif flag in flags_w_args:
+                    for i in range(len(arg)):
+                        if arg[i] in switches:
+                            set_switches.add(arg[i])
+                        # If see a flag that expects arguments, use the rest of
+                        # the arguments as argument to that flag.
+                        elif arg[i] in flags_w_args:
+                            arg  = arg[i:]
+                            flag = arg[0]
+                            break
+                    # If the break in the loop above did not get executed, the
+                    # whole arg comprised switches, thus the program shall
+                    # continue with the next argument.
+                    continue
+                if flag in flags_w_args:
                     flag_value = arg[1:].split(self.__FLAG_ARG_SEPERATOR)
-                    if not flag_value:
-                        raise FlagNeedsArguments("Flag `{0}' expects argument(s)."
-                                                 .format(flag))
+                    if flag_value == [""]:
+                        raise FlagNeedsArguments(
+                            "Flag `{0}' expects argument(s).".format(flag))
                     else:
                         options[flag] = flag_value
                 else:
-                    raise UnknownFlag("Flag `{0}' is not recognised.".format(flag))
+                    raise UnknownFlag("Flag `{0}' is not recognised."
+                                      .format(flag))
         unset_switches = switches - set_switches
         self._options = options
         for switch in unset_switches:
             self._options[switch] = False
         for switch in set_switches:
             self._options[switch] = True
+        self.__parsed = True
         return True
 
     def options(self):
+        """
+        Return parsed options.  If self.parse() has not been run already, run
+        it.
+        """
+        if not self.__parsed:
+            self.parse()
         return self._options
 
     def non_options(self):
+        """
+        Return parsed non-option arguments.  If self.parse() has not been run
+        already, run it.
+        """
+        if not self.__parsed:
+            self.parse()
         return self._non_options
 
-
-# What is more important than thoroughly tested code? TDD anyone?
-# if __name__ == "__main__":
-#     x = Getopt("poppy", "-ahi,ho", "-qw", "ello", "-e",
-#                a = (True, "asdf"),
-#                q = (False, "asdf"),
-#                w = (False, "asdf"))
-#     x.parse()
-#     print(x.options())
-#     print(x.non_options())

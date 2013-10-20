@@ -7,12 +7,9 @@ from sug.getopt import Getopt
 
 class GetoptTestCase(TestCase):
     "Base class for getopt tests."
-    def __init__(self):
-        super().__init__()
-        self.g = None
+    g = None
 
     # The longest name I have ever used.
-    # Run getopt_instance.parse() before passing in.
     def _test_getopt_with_expectancies(self, expected_options,
                                        expected_non_options):
         "Test Getopt class, after Getopt.parse has run."

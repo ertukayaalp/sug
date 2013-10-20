@@ -1,8 +1,12 @@
-import sug.getopt
-import sys
-import re
+"Command line interface for sug."
 
-#                          How to subsitute globally?
+import sys
+import os
+# import re
+
+from sug.getopt import Getopt, UnknownFlag
+
+#                          How to substitute globally?
 
 # The intent of this program is to *safely* and *accurately* apply regular
 # expressions to files *line by line*.  It is similar to sed(1).
@@ -76,9 +80,66 @@ import re
 # library that the script uses:  Script shall be the command line interface to
 # the library.
 
+def do_substitute(options, regexp_or_script, substitute, _file):
+    print("chop", _file)
+
+def check_exists_or_die(_file):
+    "Check a _ile for existance and die if it doesn't."
+    try:
+        os.stat(_file)
+    except FileNotFoundError:
+        die("cannot stat file `{0}'".format(_file))
+
+def start(options, regexp_or_script, substitute, files):
+    "Start processig files."
+    for _file in files:
+        check_exists_or_die(_file)
+        if not os.path.isfile(_file):
+            die("cannot operate on directories")
+    # If the regexp is from file or a script will be uset for substitution,
+    # make sure that given file exits.
+    if any([options["F"], options["S"]]):
+        check_exists_or_die(regexp_or_script)
+    for _file in files:
+        do_substitute(options, regexp_or_script, substitute, _file)
+
+def die(reason):
+    """
+    Exit immediately, because of an error.
+
+    param error: an error message.
+    """
+    raise SystemExit("sug: fatal: {0}".format(reason))
+
+def usage():
+    "Print usage message and exit error."
+    sys.stdout.write("sug: usage: sug [-bopsSF] "
+                     "(REGEXP|FILE) SUBSTITUTE FILES...\n")
+    exit(2)
+
 def main(argv):
-    return 0
+    "Entry point to the program."
+    opts = Getopt("sug", *argv,
+                  b = (False, "back up files"),
+                  F = (False, "read regexp from file"),
+                  S = (False, "apply script instead of regexp"),
+                  s = (False, "write changes to stdout"),
+                  p = (False, "generate a patch from results, write to stdout"),
+                  o = (False,
+                       "substitute only the first occurence on every line"))
+    try:
+        opts.parse()
+    except UnknownFlag:
+        usage()
+
+    options = opts.options()
+    non_options = opts.non_options()
+
+    if len(non_options) < 3:
+        usage()
+
+    start(options, non_options[0], non_options[1], non_options[2:])
 
 if __name__ == "__main__":
-    exit(main(sys.argv))
+    exit(main(sys.argv[1:]))
 
