@@ -5,6 +5,7 @@ import os
 import re
 import tempfile
 import errno
+import difflib
 
 from sug.getopt import Getopt, UnknownFlag
 
@@ -127,31 +128,34 @@ def atomic_write(_file, data, backup = False):
     # The temporary file is ought to be deleted automagically, says the docs.
     os.close(tmp_fd)
 
+def write_to_stdout(_iterable):
+    "Perform an atomic write to stdout."
+    sys.stdout.write("".join(_iterable))
+    sys.stdout.flush()
+
 def do_substitute(options, regexp, substitute, _file):
     "Execute substitution."
     r = regexp
     backup = True if options["b"] else False
-
+    to_diff = list()
+    processed_file = list()
     if options["F"]:
         with open(regexp) as regex_file:
             r = regex_file.read()
-
     _regexp = re.compile(r)
-
-    processed_file = list()
-
     with open(_file) as f:
         for i in f:
+            if options["p"]:
+                to_diff.append(i)
             p = re.sub(_regexp, substitute, i)
             processed_file.append(p)
-
     if options["s"]:
-        for line in processed_file:
-            sys.stdout.write(line)
+        write_to_stdout(processed_file)
+    elif options["p"]:
+        diff = difflib.unified_diff(to_diff, processed_file, _file, _file)
+        write_to_stdout(diff)
     else:
         atomic_write(_file, processed_file, backup)
-
-    del processed_file
 
 def check_exists_or_die(_file):
     "Check a file for existance and die if it doesn't exist."
