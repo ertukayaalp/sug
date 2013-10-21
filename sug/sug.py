@@ -2,9 +2,13 @@
 
 import sys
 import os
-# import re
+import re
+import tempfile
+import errno
 
 from sug.getopt import Getopt, UnknownFlag
+
+# pylint: disable=W0142,C0103
 
 #                          How to substitute globally?
 
@@ -60,12 +64,6 @@ from sug.getopt import Getopt, UnknownFlag
 #   Apply changes to files, but instead of actually modifying files, write them
 #   to stdout.
 #
-# - Run files through a script instead of a regexp
-#
-#   Stick every line of input to stdin of script, and read the result from the
-#   stdout of it.  If did not return zero, do whatever is done when regexp does
-#   not match.
-#
 # - Back up files
 #
 #   Back up files if any change happened to them.
@@ -80,11 +78,83 @@ from sug.getopt import Getopt, UnknownFlag
 # library that the script uses:  Script shall be the command line interface to
 # the library.
 
-def do_substitute(options, regexp_or_script, substitute, _file):
-    print("chop", _file)
+def rename(src, dest):
+    """
+    Handle when renaming fails because dest is on a different device than the
+    one src is on.
+
+    param src: The file to rename
+    param dest: The new name for the file.
+    """
+    try:
+        os.rename(src, dest)
+    except OSError as oe:
+        if oe.errno == errno.EXDEV:
+            with open(dest, "w") as dest_file:
+                with open(src, "r") as src_file:
+                    dest_file.write(src_file.read())
+                    dest_file.flush()
+                    os.fsync(dest_file.fileno())
+        else:
+            raise oe
+
+def atomic_write(_file, data, backup = False):
+    """
+    Perform an atomic write.
+
+    param file: Path to the destination file.
+    param data: Data to write to file, an iterable of strings
+    """
+    # Take no risks.
+    assert (type(_file) == str) and (type(data) == list)
+
+    # If two files are not on the same file system, os.rename will fail to be
+    # atomic. Thus create the temporary file in the same directory as the
+    # processed file in order to play it safe.
+    tmp_fd, tmp_path = tempfile.mkstemp(text = True, dir = os.getcwd())
+
+    with open(tmp_path, "w") as tmp_file:
+        for i in data:
+            tmp_file.write(i)
+        tmp_file.flush()
+    # Make sure the data is written to the filesystem.
+    os.fsync(tmp_fd)
+
+    if backup and os.path.exists(_file):
+        rename(_file, _file + "~sug")
+
+    rename(tmp_path, _file)
+    # The temporary file is ought to be deleted automagically, says the docs.
+    os.close(tmp_fd)
+
+def do_substitute(options, regexp, substitute, _file):
+    "Execute substitution."
+    r = regexp
+    backup = True if options["b"] else False
+
+    if options["F"]:
+        with open(regexp) as regex_file:
+            r = regex_file.read()
+
+    _regexp = re.compile(r)
+
+    processed_file = list()
+
+    with open(_file) as f:
+        for i in f:
+            p = re.sub(_regexp, substitute, i)
+            processed_file.append(p)
+
+    if options["s"]:
+        for line in processed_file:
+            sys.stdout.write(line)
+    else:
+        atomic_write(_file, processed_file, backup)
+
+    del processed_file
 
 def check_exists_or_die(_file):
-    "Check a _ile for existance and die if it doesn't."
+    "Check a file for existance and die if it doesn't exist."
     try:
         os.stat(_file)
     except FileNotFoundError:
@@ -98,7 +168,7 @@ def start(options, regexp_or_script, substitute, files):
             die("cannot operate on directories")
     # If the regexp is from file or a script will be uset for substitution,
     # make sure that given file exits.
-    if any([options["F"], options["S"]]):
+    if options["F"]:
         check_exists_or_die(regexp_or_script)
     for _file in files:
         do_substitute(options, regexp_or_script, substitute, _file)
@@ -113,7 +183,7 @@ def die(reason):
 
 def usage():
     "Print usage message and exit error."
-    sys.stdout.write("sug: usage: sug [-bopsSF] "
+    sys.stdout.write("sug: usage: sug [-bopsF] "
                      "(REGEXP|FILE) SUBSTITUTE FILES...\n")
     exit(2)
 
@@ -122,7 +192,6 @@ def main(argv):
     opts = Getopt("sug", *argv,
                   b = (False, "back up files"),
                   F = (False, "read regexp from file"),
-                  S = (False, "apply script instead of regexp"),
                   s = (False, "write changes to stdout"),
                   p = (False, "generate a patch from results, write to stdout"),
                   o = (False,

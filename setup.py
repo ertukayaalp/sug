@@ -7,5 +7,5 @@ setup(name="sug",
   author_email="self@gkayaalp.com",
   url="http://gkayaalp.com/p/sug.html",
   packages= ["sug"],
-#  scripts=["scripts/sug"],
+  scripts=["scripts/sug"],
 )
