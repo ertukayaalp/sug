@@ -10,76 +10,6 @@ import select
 
 from sug.getopt import Getopt, UnknownFlag
 
-# pylint: disable=W0142,C0103
-
-#                          How to substitute globally?
-
-# The intent of this program is to *safely* and *accurately* apply regular
-# expressions to files *line by line*.  It is similar to sed(1).
-
-# I think sed(1) has wrong defaults:  Most of the time, I want to substitute
-# globally.  Most of the time, I want extended regexp.  Most of the time, I
-# just want to change the file in-place.  This program (called `sug') is a go
-# at making a more favorable stream edtiting tool.
-
-# The flow of the program is as follows:
-
-# - find out which files to operate on.
-# - compile the regexp
-# - A: pick a file to work on, if no more files, terminate.
-#   - B: pick the next line from the file, if EOF, goto C.
-#     - Apply the regexp.
-#     - Push the resulting line to a list in memory.
-#     - goto b
-#   - C: Write file in an atomic manner. Goto A.
-
-# A good optimization would be to act on a per file basis, close and deallocate
-# all memory used with that file after the operations are done on it.
-
-# Yet another good optimization would be to not keep a line if no substitutions
-# happened on it: Just record which lines to change in a file and the versions
-# of the line with the regexp applied.  Yes, I'm thinking of a file with lots
-# and lots of lines with no matches.
-
-#                                Fuck the s///
-
-# The s/<pattern>/<substitute>/<options> syntax does not work: It is
-# unreadable.  Instead, get <pattern> and <substitute> as seperate arguments,
-# and <options> as standard command line arguments.
-
-#                                   Options
-
-# - Substitute once per line
-#
-#   The default behavior is to replace every match.  If this option is set,
-#   however, do what uncle sed(1) does and replace once per line.
-#
-# - Generate a patch
-#
-#   Instead of changing file(s), generate the diff of the files' actual state
-#   and the state on them when regexps applied.  Do not change the actual
-#   files, but provide an option to do so.  Patch shall be in the standard
-#   unified format, because why shouldn't it?
-#
-# - Write changed files to stdout
-#
-#   Apply changes to files, but instead of actually modifying files, write them
-#   to stdout.
-#
-# - Back up files
-#
-#   Back up files if any change happened to them.
-#
-# - Read regexp from file
-#
-#   Instead of getting the regexp from arguments, get them from files.
-
-#                               The sug library
-
-# Instead of being a monolithic application, sug shall comprise a script and a
-# library that the script uses:  Script shall be the command line interface to
-# the library.
-
 ANY_STDIN = select.select([sys.stdin], [], [], 0)[0]
 
 def rename(src, dest):
@@ -136,16 +66,27 @@ def write_to_stdout(_iterable):
     sys.stdout.write("".join(_iterable))
     sys.stdout.flush()
 
-def do_substitute(options, regexp, substitute, _file, stdin = False):
-    "Execute substitution."
-    r = regexp
+def do_substitute(options, regexp_or_script, substitute, _file, stdin = False):
+    """
+    Execute the subtitution.
+
+    param options: A parsed Getopt object.
+    param regexp: The regexp (or a file containing the regexp) to apply.
+    param substitute: The expression to substitute with matches.
+    param _file: A list of files to operate on.
+    param stdin: A boolean value, whether to operate on stdin or not.
+    """
+    regexp = regexp_or_script
     backup = True if options["b"] else False
     to_diff = list()
     processed_file = list()
     if options["F"]:
-        with open(regexp) as regex_file:
-            r = regex_file.read()
-    _regexp = re.compile(r)
+        with open(regexp_or_script) as regexp_file:
+            regexp = regexp_file.read()
+    try:
+        _regexp = re.compile(regexp)
+    except re.error:
+        die("invalid regexp", 2)
     _file_obj = sys.stdin
     if not stdin:
         _file_obj = open(_file, "r")
@@ -154,8 +95,11 @@ def do_substitute(options, regexp, substitute, _file, stdin = False):
             to_diff.append(i)
         # Now actually apply regexp.
         count = 1 if options["o"] else 0
-        p = re.sub(_regexp, substitute, i, count = count)
-        processed_file.append(p)
+        try:
+            processed_line = re.sub(_regexp, substitute, i, count = count)
+        except re.error:
+            die("invalid backreference in substitute expression", 2)
+        processed_file.append(processed_line)
     if options["s"]:
         write_to_stdout(processed_file)
     elif options["p"]:
@@ -173,7 +117,7 @@ def check_exists_or_die(_file):
     try:
         os.stat(_file)
     except FileNotFoundError:
-        die("cannot stat file `{0}'".format(_file))
+        die("cannot stat file `{0}'".format(_file), 3)
 
 def start(options, regexp_or_script, substitute, files):
     "Start processig files."
@@ -191,19 +135,20 @@ def start(options, regexp_or_script, substitute, files):
     for _file in files:
         do_substitute(options, regexp_or_script, substitute, _file)
 
-def die(reason):
+def die(reason, exit_code = 1):
     """
     Exit immediately, because of an error.
 
     param error: an error message.
     """
-    raise SystemExit("sug: fatal: {0}".format(reason))
+    sys.stdout.write("sug: fatal: {0}\n".format(reason))
+    exit(exit_code)
 
 def usage():
     "Print usage message and exit error."
     sys.stdout.write("sug: usage: sug [-bopsF] "
                      "(REGEXP|FILE) SUBSTITUTE FILES...\n")
-    exit(2)
+    exit(4)
 
 def main(argv):
     "Entry point to the program."
@@ -222,8 +167,6 @@ def main(argv):
     options = opts.options()
     non_options = opts.non_options()
     n = len(non_options)
-
-    print(non_options)
 
     # Delete stuff from stdin.
     if n == 1 and ANY_STDIN:
