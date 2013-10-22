@@ -6,6 +6,7 @@ import re
 import tempfile
 import errno
 import difflib
+import select
 
 from sug.getopt import Getopt, UnknownFlag
 
@@ -79,6 +80,8 @@ from sug.getopt import Getopt, UnknownFlag
 # library that the script uses:  Script shall be the command line interface to
 # the library.
 
+ANY_STDIN = select.select([sys.stdin], [], [], 0)[0]
+
 def rename(src, dest):
     """
     Handle when renaming fails because dest is on a different device than the
@@ -133,7 +136,7 @@ def write_to_stdout(_iterable):
     sys.stdout.write("".join(_iterable))
     sys.stdout.flush()
 
-def do_substitute(options, regexp, substitute, _file):
+def do_substitute(options, regexp, substitute, _file, stdin = False):
     "Execute substitution."
     r = regexp
     backup = True if options["b"] else False
@@ -143,19 +146,27 @@ def do_substitute(options, regexp, substitute, _file):
         with open(regexp) as regex_file:
             r = regex_file.read()
     _regexp = re.compile(r)
-    with open(_file) as f:
-        for i in f:
-            if options["p"]:
-                to_diff.append(i)
-            p = re.sub(_regexp, substitute, i)
-            processed_file.append(p)
+    _file_obj = sys.stdin
+    if not stdin:
+        _file_obj = open(_file, "r")
+    for i in _file_obj:
+        if options["p"]:
+            to_diff.append(i)
+        # Now actually apply regexp.
+        count = 1 if options["o"] else 0
+        p = re.sub(_regexp, substitute, i, count = count)
+        processed_file.append(p)
     if options["s"]:
         write_to_stdout(processed_file)
     elif options["p"]:
-        diff = difflib.unified_diff(to_diff, processed_file, _file, _file)
+        diff = difflib.unified_diff(to_diff, processed_file,
+                                    _file or "<stdin>",
+                                    _file or "<stdin>")
         write_to_stdout(diff)
-    else:
+    elif not stdin:
         atomic_write(_file, processed_file, backup)
+    else:
+        write_to_stdout(processed_file)
 
 def check_exists_or_die(_file):
     "Check a file for existance and die if it doesn't exist."
@@ -166,11 +177,14 @@ def check_exists_or_die(_file):
 
 def start(options, regexp_or_script, substitute, files):
     "Start processig files."
+    # If anything piped, operate on that too.
+    if ANY_STDIN:
+        do_substitute(options, regexp_or_script, substitute, None, True)
     for _file in files:
         check_exists_or_die(_file)
         if not os.path.isfile(_file):
             die("cannot operate on directories")
-    # If the regexp is from file or a script will be uset for substitution,
+    # If the regexp is from file or a script will be use for substitution,
     # make sure that given file exits.
     if options["F"]:
         check_exists_or_die(regexp_or_script)
@@ -207,11 +221,24 @@ def main(argv):
 
     options = opts.options()
     non_options = opts.non_options()
+    n = len(non_options)
 
-    if len(non_options) < 3:
+    print(non_options)
+
+    # Delete stuff from stdin.
+    if n == 1 and ANY_STDIN:
+        start(options, non_options[0], r"", [])
+    # Substitute stuff from stdin.
+    elif n == 2 and ANY_STDIN:
+        start(options, non_options[0], non_options[1], [])
+    # Delete stuff from file.
+    elif n == 2 and not ANY_STDIN:
+        start(options, non_options[0], r"", [non_options[1]])
+    # Substitute stuff from files and maybe stdin.
+    elif len(non_options) > 2:
+        start(options, non_options[0], non_options[1], non_options[2:])
+    else:
         usage()
-
-    start(options, non_options[0], non_options[1], non_options[2:])
 
 if __name__ == "__main__":
     exit(main(sys.argv[1:]))

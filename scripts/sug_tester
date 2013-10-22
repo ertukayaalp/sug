@@ -1,0 +1,12 @@
+#!/usr/bin/env python3.3
+import sys
+import os
+
+# Remove current directory from path, so do not import sug script.
+sys.path.pop(0)
+sys.path.insert(0, os.path.join(os.path.realpath(".."), "sug/"))
+
+from sug import sug
+
+sug.main(sys.argv[1:])
+
