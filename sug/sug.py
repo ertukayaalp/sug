@@ -12,6 +12,15 @@ from sug.getopt import Getopt, UnknownFlag
 
 ANY_STDIN = select.select([sys.stdin], [], [], 0)[0]
 
+def oserror_die(oe):
+    """
+    Report an OSError.
+
+    oe: an OSError instance.
+    """
+    die("{0}: `{1}'".format(oe.strerror, oe.filename), oe.errno)
+
+
 def rename(src, dest):
     """
     Handle when renaming fails because dest is on a different device than the
@@ -24,13 +33,16 @@ def rename(src, dest):
         os.rename(src, dest)
     except OSError as oe:
         if oe.errno == errno.EXDEV:
-            with open(dest, "w") as dest_file:
-                with open(src, "r") as src_file:
-                    dest_file.write(src_file.read())
-                    dest_file.flush()
-                    os.fsync(dest_file.fileno())
+            try:
+                dest_file = open(dest, "w")
+                src_file = open(src, "r")
+                dest_file.write(src_file.read())
+                dest_file.flush()
+                os.fsync(dest_file.fileno())
+            except OSError as oe1:
+                oserror_die(oe1)
         else:
-            raise oe
+            oserror_die(oe)
 
 def atomic_write(_file, data, backup = False):
     """
@@ -45,7 +57,11 @@ def atomic_write(_file, data, backup = False):
     # If two files are not on the same file system, os.rename will fail to be
     # atomic. Thus create the temporary file in the same directory as the
     # processed file in order to play it safe.
-    tmp_fd, tmp_path = tempfile.mkstemp(text = True, dir = os.getcwd())
+    tempdir = os.path.dirname(os.path.realpath(_file))
+    try:
+        tmp_fd, tmp_path = tempfile.mkstemp(text = True, dir = tempdir)
+    except OSError as oe:
+        oserror_die(oe)
 
     with open(tmp_path, "w") as tmp_file:
         for i in data:
@@ -62,7 +78,11 @@ def atomic_write(_file, data, backup = False):
     os.close(tmp_fd)
 
 def write_to_stdout(_iterable):
-    "Perform an atomic write to stdout."
+    """
+    Write the iterable to stdout, joining all the contents.
+
+    param _iterable: Any iterable of strings.
+    """
     sys.stdout.write("".join(_iterable))
     sys.stdout.flush()
 
@@ -113,14 +133,26 @@ def do_substitute(options, regexp_or_script, substitute, _file, stdin = False):
         write_to_stdout(processed_file)
 
 def check_exists_or_die(_file):
-    "Check a file for existance and die if it doesn't exist."
+    """
+    Check a file for existance and die if it doesn't exist.
+
+    param _file: A path.
+    """
     try:
         os.stat(_file)
     except FileNotFoundError:
         die("cannot stat file `{0}'".format(_file), 3)
 
 def start(options, regexp_or_script, substitute, files):
-    "Start processig files."
+    """
+    Start processig files.
+
+    param options: A Getopt instance.
+    param regexp_or_script: Either a regexp or path to a file containing a
+    regexp; contents are fed to re.compile.
+    substitute: Expression to substitute matches.
+    files: A list of file paths to operate on.
+    """
     # If anything piped, operate on that too.
     if ANY_STDIN:
         do_substitute(options, regexp_or_script, substitute, None, True)
@@ -151,7 +183,11 @@ def usage():
     exit(4)
 
 def main(argv):
-    "Entry point to the program."
+    """
+    Entry point to the program.
+
+    param argv: A list of arguments to the program.
+    """
     opts = Getopt("sug", *argv,
                   b = (False, "back up files"),
                   F = (False, "read regexp from file"),
