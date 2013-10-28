@@ -32,7 +32,7 @@ class Getopt:
     """
     def __init__(self, program_name, *args, **options):
         """
-	Initialise Getopt.
+        Initialise Getopt.
 
         args: A list of arguments.
 

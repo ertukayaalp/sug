@@ -1,12 +1,12 @@
 "Command line interface for sug."
 
-import sys
+import difflib
+import errno
 import os
 import re
-import tempfile
-import errno
-import difflib
 import select
+import sys
+import tempfile
 
 from sug.getopt import Getopt, UnknownFlag
 
@@ -19,7 +19,6 @@ def oserror_die(oe):
     oe: an OSError instance.
     """
     die("{0}: `{1}'".format(oe.strerror, oe.filename), oe.errno)
-
 
 def rename(src, dest):
     """
@@ -159,7 +158,7 @@ def start(options, regexp_or_script, substitute, files):
     for _file in files:
         check_exists_or_die(_file)
         if not os.path.isfile(_file):
-            die("cannot operate on directories")
+            die("cannot operate on non-regular files")
     # If the regexp is from file or a script will be use for substitution,
     # make sure that given file exits.
     if options["F"]:
