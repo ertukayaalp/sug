@@ -12,6 +12,30 @@ from sug.getopt import Getopt, UnknownFlag
 
 ANY_STDIN = select.select([sys.stdin], [], [], 0)[0]
 
+USAGE_STRING = "sug: usage: sug [-bhopsF] (REGEXP|FILE) SUBSTITUTE FILES...\n"
+
+HELP_STRING = """\
+{usage}
+Options:
+    -b back up files
+    -h show this help text
+    -o substitute only the first occurence on every line
+    -p generate a patch from results, then write to stdout
+    -s write changes to stdout
+    -F read regexp from file
+
+Arguments:
+    REGEXP: the expression to apply to input.
+    FILE: if -F flag is set, the contents of this file will be used as the
+          regexp
+    FILES: The files ti operate on.  sug expects to operate on regular files.
+
+""".format(usage=USAGE_STRING)
+
+def help():
+    sys.stdout.write(HELP_STRING)
+    exit(0)
+
 def oserror_die(oe):
     """
     Report an OSError.
@@ -177,8 +201,7 @@ def die(reason, exit_code = 1):
 
 def usage():
     "Print usage message and exit error."
-    sys.stdout.write("sug: usage: sug [-bopsF] "
-                     "(REGEXP|FILE) SUBSTITUTE FILES...\n")
+    sys.stdout.write(USAGE_STRING)
     exit(4)
 
 def main(argv):
@@ -193,7 +216,8 @@ def main(argv):
                   s = (False, "write changes to stdout"),
                   p = (False, "generate a patch from results, write to stdout"),
                   o = (False,
-                       "substitute only the first occurence on every line"))
+                       "substitute only the first occurence on every line"),
+                  h = (False, 'show this help'))
     try:
         opts.parse()
     except UnknownFlag:
@@ -203,6 +227,8 @@ def main(argv):
     non_options = opts.non_options()
     n = len(non_options)
 
+    if options['h']:
+        help()
     # Delete stuff from stdin.
     if n == 1 and ANY_STDIN:
         start(options, non_options[0], r"", [])
