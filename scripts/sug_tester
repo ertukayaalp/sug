@@ -8,5 +8,6 @@ sys.path.insert(0, os.path.join(os.path.realpath(".."), "sug/"))
 
 from sug import sug
 
-sug.main(sys.argv[1:])
+if __name__ == '__main__':
+    exit(sug.main(sys.argv[1:]))
 
